@@ -40,20 +40,27 @@ const qtyButtonStyle = { width: 32, height: 32, borderRadius: 6, border: "1px so
 const addButtonStyle = { padding: "8px 16px", background: "#222", color: "#fff", borderRadius: 6, border: "none" };
 const cartBarStyle = { position: "fixed", bottom: 0, left: 0, right: 0, background: "#222", color: "#fff", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: 480, margin: "0 auto" };
 
-export default function RestaurantMenu({ restaurant, products }) {
-  const [cart, setCart] = useState({});
+export default function RestaurantMenu(props) {
+  const restaurant = props.restaurant;
+  const products = props.products;
+  const cartState = useState({});
+  const cart = cartState[0];
+  const setCart = cartState[1];
 
   function addItem(id) {
     setCart(function (prev) {
       const current = prev[id] || 0;
-      return { ...prev, [id]: current + 1 };
+      const updated = Object.assign({}, prev);
+      updated[id] = current + 1;
+      return updated;
     });
   }
 
   function removeItem(id) {
     setCart(function (prev) {
       const current = prev[id] || 0;
-      const updated = { ...prev, [id]: Math.max(0, current - 1) };
+      const updated = Object.assign({}, prev);
+      updated[id] = Math.max(0, current - 1);
       return updated;
     });
   }
@@ -64,11 +71,12 @@ export default function RestaurantMenu({ restaurant, products }) {
 
   let totalItems = 0;
   let totalPrice = 0;
-  products.forEach(function (item) {
+  for (let i = 0; i < products.length; i++) {
+    const item = products[i];
     const qty = cart[item.id] || 0;
     totalItems += qty;
     totalPrice += qty * item.price;
-  });
+  }
 
   return (
     <div style={pageStyle}>
@@ -84,4 +92,40 @@ export default function RestaurantMenu({ restaurant, products }) {
 
         <h2>Menu</h2>
 
-        {products.length === 0 && <p>No menu items yet.</p>}
+        {products.length === 0 ? <p>No menu items yet.</p> : null}
+
+        {products.map(function (item) {
+          const qty = cart[item.id] || 0;
+          return (
+            <div key={item.id} style={cardStyle}>
+              <div>
+                <div>{item.name}</div>
+                <div>{item.description}</div>
+                <div style={priceStyle}>Rs {item.price}</div>
+              </div>
+              <div>
+                {qty === 0 ? (
+                  <button style={addButtonStyle} onClick={function () { addItem(item.id); }}>Add</button>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button style={qtyButtonStyle} onClick={function () { removeItem(item.id); }}>-</button>
+                    <span>{qty}</span>
+                    <button style={qtyButtonStyle} onClick={function () { addItem(item.id); }}>+</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {totalItems > 0 ? (
+        <div style={cartBarStyle}>
+          <span>{totalItems} item(s)</span>
+          <span>Rs {totalPrice}</span>
+          <button style={addButtonStyle}>Place Order</button>
+        </div>
+      ) : null}
+    </div>
+  );
+        }
