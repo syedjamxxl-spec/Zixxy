@@ -39,6 +39,11 @@ const priceStyle = { fontWeight: "bold", marginTop: 4 };
 const qtyButtonStyle = { width: 32, height: 32, borderRadius: 6, border: "1px solid #ccc", background: "#fff", fontSize: 18 };
 const addButtonStyle = { padding: "8px 16px", background: "#222", color: "#fff", borderRadius: 6, border: "none" };
 const cartBarStyle = { position: "fixed", bottom: 0, left: 0, right: 0, background: "#222", color: "#fff", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: 480, margin: "0 auto" };
+const placeOrderButtonStyle = { padding: "8px 16px", background: "#fff", color: "#222", borderRadius: 6, border: "none", fontWeight: "bold" };
+const placeOrderButtonDisabledStyle = Object.assign({}, placeOrderButtonStyle, { opacity: 0.6 });
+const confirmationBarStyle = { position: "fixed", bottom: 0, left: 0, right: 0, background: "#1a7f37", color: "#fff", padding: "16px 20px", maxWidth: 480, margin: "0 auto", textAlign: "center" };
+const errorBarStyle = { position: "fixed", bottom: 0, left: 0, right: 0, background: "#b91c1c", color: "#fff", padding: "16px 20px", maxWidth: 480, margin: "0 auto", textAlign: "center" };
+const retryButtonStyle = { marginTop: 8, padding: "8px 16px", background: "#fff", color: "#b91c1c", borderRadius: 6, border: "none", fontWeight: "bold" };
 
 export default function RestaurantMenu(props) {
   const restaurant = props.restaurant;
@@ -46,6 +51,9 @@ export default function RestaurantMenu(props) {
   const cartState = useState({});
   const cart = cartState[0];
   const setCart = cartState[1];
+  const orderStatusState = useState('idle'); // idle | placing | sent | error
+  const orderStatus = orderStatusState[0];
+  const setOrderStatus = orderStatusState[1];
 
   function addItem(id) {
     setCart(function (prev) {
@@ -63,6 +71,69 @@ export default function RestaurantMenu(props) {
       updated[id] = Math.max(0, current - 1);
       return updated;
     });
+  }
+
+  async function placeOrder() {
+    setOrderStatus('placing');
+
+    let totalItems = 0;
+    let totalPrice = 0;
+    for (let i = 0; i < products.length; i++) {
+      const item = products[i];
+      const qty = cart[item.id] || 0;
+      totalItems += qty;
+      totalPrice += qty * item.price;
+    }
+
+    if (totalItems === 0) {
+      setOrderStatus('idle');
+      return;
+    }
+
+    const orderResult = await supabase
+      .from('orders')
+      .insert({
+        restaurant_id: restaurant.id,
+        total: totalPrice,
+        status: 'NEW',
+      })
+      .select()
+      .single();
+
+    if (orderResult.error || !orderResult.data) {
+      setOrderStatus('error');
+      return;
+    }
+
+    const newOrderId = orderResult.data.id;
+    const itemsToInsert = [];
+    for (let i = 0; i < products.length; i++) {
+      const item = products[i];
+      const qty = cart[item.id] || 0;
+      if (qty > 0) {
+        itemsToInsert.push({
+          order_id: newOrderId,
+          product_id: item.id,
+          quantity: qty,
+          price: item.price,
+        });
+      }
+    }
+
+    const itemsResult = await supabase.from('order_items').insert(itemsToInsert);
+
+    if (itemsResult.error) {
+      setOrderStatus('error');
+      return;
+    }
+
+    setOrderStatus('sent');
+    setCart({});
+  }
+
+  function tryAgain() {
+    setOrderStatus('idle');
+    placeOrder();
   }
 
   if (!restaurant) {
@@ -119,11 +190,26 @@ export default function RestaurantMenu(props) {
         })}
       </div>
 
-      {totalItems > 0 ? (
+      {orderStatus === 'sent' ? (
+        <div style={confirmationBarStyle}>
+          Order sent — waiting for confirmation
+        </div>
+      ) : orderStatus === 'error' ? (
+        <div style={errorBarStyle}>
+          <div>Order didn't go through — check your connection.</div>
+          <button style={retryButtonStyle} onClick={tryAgain}>Retry</button>
+        </div>
+      ) : totalItems > 0 ? (
         <div style={cartBarStyle}>
           <span>{totalItems} item(s)</span>
           <span>Rs {totalPrice}</span>
-          <button style={addButtonStyle}>Place Order</button>
+          <button
+            style={orderStatus === 'placing' ? placeOrderButtonDisabledStyle : placeOrderButtonStyle}
+            disabled={orderStatus === 'placing'}
+            onClick={placeOrder}
+          >
+            {orderStatus === 'placing' ? 'Placing...' : 'Place Order'}
+          </button>
         </div>
       ) : null}
     </div>
